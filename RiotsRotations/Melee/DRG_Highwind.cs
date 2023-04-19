@@ -100,6 +100,7 @@ namespace Melee
         {
             HandleOpenerAvailability(out act);
 
+            // Ehh?
             if (IsOpenerAvailable
                 && Configs.GetBool("DRG_LanceChargeFirst")
                 && LanceCharge.CanUse(out act, CanUseOption.MustUse)) return true;
@@ -132,28 +133,29 @@ namespace Melee
                 || JobGauge.EyeCount < 2
                 && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
 
-            if (!IsLastAction(false, StarDiver) && Nastrond.CanUse(out act, CanUseOption.MustUse)) return true;
+            if (!IsLastAction(false, StarDiver))
+            {
+                if (Nastrond.CanUse(out act, CanUseOption.MustUse)) return true;
+
+                if (DragonFireDive.CanUse(out act, CanUseOption.MustUse)) return true;
+                if (SpineShatterDive.CanUse(out act, CanUseOption.MustUseEmpty)) return true;
+
+                if (WyrmwindThrust.CanUse(out act, CanUseOption.MustUse)) return true;
+                if (!IsLastAction(false, HighJump) && MirageDive.CanUse(out act)) return true;
+
+                if (HighJump.EnoughLevel)
+                {
+                    if (HighJump.CanUse(out act, CanUseOption.MustUse)) return true;
+                }
+                else
+                {
+                    if (Jump.CanUse(out act)) return true;
+                }
+            }
 
             if (abilitiesRemaining == 2
                 && !IsLastAction(false, LifeSurge)
                 && StarDiver.CanUse(out act, CanUseOption.MustUse)) return true;
-
-            if (!IsLastAction(false, StarDiver) && DragonFireDive.CanUse(out act, CanUseOption.MustUse)) return true;
-            if (!IsLastAction(false, StarDiver) && SpineShatterDive.CanUse(out act, CanUseOption.MustUseEmpty)) return true;
-
-            if (!IsLastAction(false, StarDiver) && WyrmwindThrust.CanUse(out act, CanUseOption.MustUse)) return true;
-            if (!IsLastAction(false, StarDiver) && !IsLastAction(false, HighJump) && MirageDive.CanUse(out act)) return true;
-
-            if (HighJump.EnoughLevel)
-            {
-                if (!IsLastAction(false, StarDiver) && HighJump.CanUse(out act, CanUseOption.MustUse)) return true;
-            }
-            else
-            {
-                if (Jump.CanUse(out act)) return true;
-            }
-
-
 
             act = null;
             return false;
@@ -264,6 +266,8 @@ namespace Melee
                 if (nextGCD.IsTheSameTo(false, HeavensThrust, FullThrust)
                     && LifeSurge.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
 
+                // We buff 5th hit IF we're inside positional
+                // @TODO verify this as I'm too lazy at the time of writing
                 if (action.EnemyPositional != EnemyPositional.None
                     && action.Target != null)
                 {
