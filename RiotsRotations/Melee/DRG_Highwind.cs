@@ -118,20 +118,20 @@ namespace Melee
         #endregion
 
         #region 0GCD actions
-        protected override bool AttackAbility(byte abilitiesRemaining, out IAction act)
+        protected override bool AttackAbility(out IAction act)
         {
             if (Level == 90
                 && Configs.GetBool("DRG_OpenerAt90")
                 && IsCurrentlyInOpener)
             {
-                return AttackAbilityOpener(abilitiesRemaining, out act);
+                return AttackAbilityOpener(out act);
             }
 
-            if (JobGauge.EyeCount == 2
-                && Player.HasStatus(true, StatusID.LanceCharge)
-                && Geirskogul.CanUse(out act, CanUseOption.MustUse)
-                || JobGauge.EyeCount < 2
-                && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
+            //if (JobGauge.EyeCount == 2
+            //    && Player.HasStatus(true, StatusID.LanceCharge)
+            //    && Geirskogul.CanUse(out act, CanUseOption.MustUse)
+            //    || JobGauge.EyeCount < 2
+            //    && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
 
             if (!IsLastAction(false, StarDiver))
             {
@@ -153,21 +153,19 @@ namespace Melee
                 }
             }
 
-            if (abilitiesRemaining == 2
-                && !IsLastAction(false, LifeSurge)
+            if (!IsLastAction(false, LifeSurge)
                 && StarDiver.CanUse(out act, CanUseOption.MustUse)) return true;
 
             act = null;
             return false;
         }
 
-        private bool AttackAbilityOpener(byte abilitiesRemaining, out IAction act)
+        private bool AttackAbilityOpener(out IAction act)
         {
             if (ShouldEndOpener) IsCurrentlyInOpener = false;
 
             // Use Wyrmwind Thrust after Raiden Thrust #2 in 0GCD position 1
-            if (IsLastGCD(ActionID.RaidenThrust)
-                && abilitiesRemaining == 2)
+            if (IsLastGCD(ActionID.RaidenThrust))
             {
                 if (WyrmwindThrust.CanUse(out act, CanUseOption.MustUse))
                 {
@@ -178,15 +176,13 @@ namespace Melee
 
             // Use Spineshatter Dive after Fang and Claw #2 in 0GCD position 1
             if (IsLastGCD(false, FangandClaw)
-                && IsLastAbility(false, SpineShatterDive)
-                && abilitiesRemaining == 2)
+                && IsLastAbility(false, SpineShatterDive))
             {
                 if (SpineShatterDive.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
 
             // Use Spineshatter Dive after Heavens' Thrust in 0GCD position 1
-            if (IsLastGCD(false, HeavensThrust)
-                && abilitiesRemaining == 2)
+            if (IsLastGCD(false, HeavensThrust))
             {
                 if (SpineShatterDive.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
@@ -202,15 +198,13 @@ namespace Melee
             //}
 
             // Use Dragonfire Dive after Raiden Thrust #1 in 0GCD position 1
-            if (IsLastGCD(ActionID.RaidenThrust)
-                && abilitiesRemaining == 2)
+            if (IsLastGCD(ActionID.RaidenThrust))
             {
                 if (DragonFireDive.CanUse(out act, CanUseOption.MustUse)) return true;
             }
 
             // Use High Jump after Fang and Claw #1 in 0GCD position 1
-            if (IsLastGCD(false, FangandClaw)
-                && abilitiesRemaining == 2)
+            if (IsLastGCD(false, FangandClaw))
             {
                 if (HighJump.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
@@ -231,7 +225,7 @@ namespace Melee
         }
 
         //For some 0gcds very important, even more than healing, defense, interrupt, etc.
-        protected override bool EmergencyAbility(byte abilitiesRemaining, IAction nextGCD, out IAction act)
+        protected override bool EmergencyAbility(IAction nextGCD, out IAction act)
         {
             //HandleOpenerAvailability(out act);
 
@@ -239,7 +233,7 @@ namespace Melee
                 && Configs.GetBool("DRG_OpenerAt90")
                 && IsCurrentlyInOpener)
             {
-                return EmergencyAbilityOpener(abilitiesRemaining, nextGCD, out act);
+                return EmergencyAbilityOpener(nextGCD, out act);
             }
 
 
@@ -248,7 +242,7 @@ namespace Melee
                 if (InBurst)
                 {
                     if (Configs.GetBool("DRG_KeepBuffsAligned")
-                        && Geirskogul.ElapsedAfter(23))
+                        && Geirskogul.ElapsedAfter(24))
                     {
                         if (LanceCharge.CanUse(out act, CanUseOption.MustUse)) return true;
                         if (DragonSight.CanUse(out act, CanUseOption.MustUse)) return true;
@@ -261,6 +255,12 @@ namespace Melee
                         if (BattleLitany.CanUse(out act, CanUseOption.MustUse)) return true;
                     }
                 }
+
+                if (JobGauge.EyeCount == 2
+                    && Player.HasStatus(true, StatusID.LanceCharge)
+                    && Geirskogul.CanUse(out act, CanUseOption.MustUse)
+                    || JobGauge.EyeCount < 2
+                    && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
 
                 // Make sure Heavens' Thrust gets buffed
                 if (nextGCD.IsTheSameTo(false, HeavensThrust, FullThrust)
@@ -284,41 +284,32 @@ namespace Melee
                 }
             }
 
-            return base.EmergencyAbility(abilitiesRemaining, nextGCD, out act);
+            return base.EmergencyAbility(nextGCD, out act);
         }
 
-        private bool EmergencyAbilityOpener(byte abilitiesRemaining, IAction nextGCD, out IAction act)
+        private bool EmergencyAbilityOpener(IAction nextGCD, out IAction act)
         {
             // Buff from Chaotic Spring through Wheeling Thrust #2
             if (nextGCD.IsTheSameTo(true, ChaosThrust))
             {
-                if (abilitiesRemaining == 2)
-                {
-                    if (LanceCharge.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
-                }
-                else if (abilitiesRemaining == 1)
-                {
-                    if (DragonSight.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
-                }
+                if (LanceCharge.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
+                if (DragonSight.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
 
             // Buff from Wheeling Thrust #1 through Spineshatter Dive #2
-            if (nextGCD.IsTheSameTo(false, WheelingThrust)
-                && abilitiesRemaining == 2)
+            if (nextGCD.IsTheSameTo(false, WheelingThrust))
             {
                 if (BattleLitany.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
 
             // Buff Fang and Claw in 0GCD position 2
-            if (nextGCD.IsTheSameTo(false, FangandClaw)
-                && abilitiesRemaining == 1)
+            if (nextGCD.IsTheSameTo(false, FangandClaw))
             {
                 if (LifeSurge.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
 
             // Buff Heavens' Thrust in 0GCD position 1
-            if (nextGCD.IsTheSameTo(false, HeavensThrust)
-                && abilitiesRemaining == 2)
+            if (nextGCD.IsTheSameTo(false, HeavensThrust))
             {
                 if (LifeSurge.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
@@ -328,19 +319,19 @@ namespace Melee
         }
 
         //Some 0gcds that don't need to a hostile target in attack range.
-        protected override bool GeneralAbility(byte abilitiesRemaining, out IAction act)
+        protected override bool GeneralAbility(out IAction act)
         {
             if (Level == 90
                 && Configs.GetBool("DRG_OpenerAt90")
                 && IsCurrentlyInOpener)
             {
-                return GeneralAbilityOpener(abilitiesRemaining, out act);
+                return GeneralAbilityOpener(out act);
             }
 
-            return base.GeneralAbility(abilitiesRemaining, out act);
+            return base.GeneralAbility(out act);
         }
 
-        private bool GeneralAbilityOpener(byte abilitiesRemaining, out IAction act)
+        private bool GeneralAbilityOpener(out IAction act)
         {
             // Immediately use Mirage Dive to get ready regardless of distance
             if (Player.HasStatus(true, StatusID.DiveReady)
@@ -348,8 +339,7 @@ namespace Melee
 
             // Use Geirskogul only if no eye exists, in 0GCD position 1
             if (IsLastGCD(false, WheelingThrust)
-                && JobGauge.EyeCount == 0
-                && abilitiesRemaining == 2)
+                && JobGauge.EyeCount == 0)
             {
                 if (Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
             }
