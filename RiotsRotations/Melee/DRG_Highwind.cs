@@ -28,13 +28,12 @@ namespace Melee
         // Just makes sure our opener can actually be ran and complete.
         // @TODO: Add check that we have no eyes, or handle that
         // inside the actual opener (probably best to do it that way).
-        private void HandleOpenerAvailability(out IAction act)
+        private void HandleOpenerAvailability()
         {
             if (Configs.GetBool("DRG_OpenerAt90")
-                && DragonSight.CanUse(out act, CanUseOption.MustUse)
-                && BattleLitany.CanUse(out act, CanUseOption.MustUse)
-                && LanceCharge.CanUse(out act, CanUseOption.MustUse)
-                && DragonFireDive.CanUse(out act, CanUseOption.MustUse)
+                && DragonSight.CanUse(out _, CanUseOption.IgnoreClippingCheck)
+                && BattleLitany.CanUse(out _, CanUseOption.IgnoreClippingCheck)
+                && LanceCharge.CanUse(out _, CanUseOption.IgnoreClippingCheck)
                 && Player.Level >= 90)
             {
                 IsOpenerAvailable = true;
@@ -44,8 +43,6 @@ namespace Melee
             {
                 IsOpenerAvailable = false;
             }
-
-            act = null;
         }
 
         // No constructor, so we use this CreateConfiguration() method
@@ -134,7 +131,7 @@ namespace Melee
         {
             // EmergencyGCD is ran first, ref RotationSolver.Basic.CustomRotation, IAction GCD method
             // so we just run this here.
-            HandleOpenerAvailability(out act);
+            HandleOpenerAvailability();
 
             // Ehh? Probably shouldn't have this as an option.
             if (IsOpenerAvailable
