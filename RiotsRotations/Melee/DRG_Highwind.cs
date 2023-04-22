@@ -20,7 +20,10 @@ namespace Melee
 
         private static bool ShouldEndOpener { get; set; }
 
-        private static DRGGauge JobGauge => Service.JobGauges.Get<DRGGauge>();
+        // Has now been opened up in DRG_Base.cs in the main RotationSolver.Basic project.
+        // @REF: https://github.com/ArchiDog1998/RotationSolver/tree/main/RotationSolver.Basic/Rotations/Basic
+        // @REF: https://github.com/ArchiDog1998/FFXIVRotations/tree/main/DefaultRotations 
+        //private static DRGGauge JobGauge => Service.JobGauges.Get<DRGGauge>();
 
         // Just makes sure our opener can actually be ran and complete.
         // @TODO: Add check that we have no eyes, or handle that
@@ -203,7 +206,7 @@ namespace Melee
             }
 
             // Use Spineshatter Dive after Heavens' Thrust in 0GCD position 1
-            if (IsLastGCD(false, HeavensThrust))
+            if (IsLastGCD(true, FullThrust))
             {
                 if (SpineShatterDive.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
@@ -261,7 +264,7 @@ namespace Melee
             {
                 // We don't want Geirskogul to run without Lance Charge if we're
                 // close to going into Life of the Dragon.
-                if (JobGauge.EyeCount == 2
+                if (EyeCount == 2
                         && Player.HasStatus(true, StatusID.LanceCharge)
                         && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
 
@@ -290,11 +293,11 @@ namespace Melee
                 }
 
                 // If we have less than 2 eyes open (0 or 1), feel free to spam Geirskogul.
-                if (JobGauge.EyeCount < 2
+                if (EyeCount < 2
                     && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
 
                 // Make sure Heavens' Thrust gets buffed
-                if (nextGCD.IsTheSameTo(false, HeavensThrust, FullThrust)
+                if (nextGCD.IsTheSameTo(true, FullThrust)
                     && LifeSurge.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
 
                 if (Configs.GetBool("DRG_LifeSurgeFifthHit"))
@@ -355,7 +358,7 @@ namespace Melee
             }
 
             // Buff Heavens' Thrust in 0GCD position 1
-            if (nextGCD.IsTheSameTo(false, HeavensThrust))
+            if (nextGCD.IsTheSameTo(true, FullThrust))
             {
                 if (LifeSurge.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
@@ -385,7 +388,7 @@ namespace Melee
 
             // Use Geirskogul only if no eye exists, in 0GCD position 1
             if (IsLastGCD(false, WheelingThrust)
-                && JobGauge.EyeCount == 0)
+                && EyeCount == 0)
             {
                 if (Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
             }
