@@ -28,7 +28,12 @@
         // inside the actual opener (probably best to do it that way).
         private void HandleOpenerAvailability()
         {
-            
+            // Since we run this method inside EmergencyGCD, we require the
+            // CanUseOption.IgnoreClippingCheck option to be set.
+            // This is because RotationSolver will try to keep 0GCDs from
+            // clipping GCDs. You can, however, skip the CanUseOption if ran in
+            // GeneralAbility for example. However, that has a distance threshold
+            // while EmergencyGCD runs regardless of distance.
             if (Configs.GetBool("DRG_OpenerAt90")
                 && DragonSight.CanUse(out _, CanUseOption.IgnoreClippingCheck)
                 && BattleLitany.CanUse(out _, CanUseOption.IgnoreClippingCheck)
