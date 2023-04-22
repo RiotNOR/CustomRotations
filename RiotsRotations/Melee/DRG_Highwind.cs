@@ -59,6 +59,24 @@ namespace Melee
                 .SetBool("DRG_LifeSurgeFifthHit", false, "Buff fifth combo hit with Life Surge IF you're in position or have True North on.");
         }
 
+        // Here we can add abilities to use during countdown to
+        // prepare for a fight.
+        protected override IAction CountDownAction(float remainTime)
+        {
+            // We check that the remaining time of the countdown (do "/cd 7" in chat to test)
+            // is lower than the time it takes to cast TrueNorth plus the setting in
+            // Param -> Basic, and the slider for "Set time advance of using casting actions on counting down"
+            //if (remainTime < TrueNorth.CastTime + Service.Config.CountDownAhead)
+            //{
+                // We don't have an out parameter (https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/out-parameter-modifier)
+                // in CountdownAction, so we use a Discard (https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/functional/discards)
+                // because we don't need it at all.Then we just return the IBaseAction itself.
+                //if (TrueNorth.CanUse(out _, CanUseOption.IgnoreClippingCheck)) return TrueNorth;
+            //}
+
+            return base.CountDownAction(remainTime);
+        }
+
         #region GCD actions
 
         // General cooldowns (Global cooldowns)
