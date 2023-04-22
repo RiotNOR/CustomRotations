@@ -115,7 +115,6 @@ namespace Melee
             if (FangandClaw.CanUse(out act)) return true;
 
             // Heavens' Thrust combo
-            if (HeavensThrust.CanUse(out act)) return true;
             if (FullThrust.CanUse(out act)) return true;
 
             // Chaotic Spring
