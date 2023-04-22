@@ -1,6 +1,4 @@
-﻿using Dalamud.Game.ClientState.JobGauge.Types;
-
-namespace Melee
+﻿namespace Melee
 {
     [RotationDesc("Holds back buffs, and will not use GSK if 2 eyes are open so as to not enter Life. Might have to increase burst window timer.", ActionID.LanceCharge, ActionID.DragonSight, ActionID.BattleLitany, ActionID.Geirskogul /* Some actions you used in burst. */)]
     [SourceCode("https://github.com/RiotNOR/CustomRotations/blob/main/RiotsRotations/Melee/DRG_Highwind.cs")]
@@ -30,6 +28,7 @@ namespace Melee
         // inside the actual opener (probably best to do it that way).
         private void HandleOpenerAvailability()
         {
+            
             if (Configs.GetBool("DRG_OpenerAt90")
                 && DragonSight.CanUse(out _, CanUseOption.IgnoreClippingCheck)
                 && BattleLitany.CanUse(out _, CanUseOption.IgnoreClippingCheck)
@@ -265,8 +264,6 @@ namespace Melee
         //For some 0gcds very important, even more than healing, defense, interrupt, etc.
         protected override bool EmergencyAbility(IAction nextGCD, out IAction act)
         {
-            //HandleOpenerAvailability(out act);
-
             if (Level == 90
                 && Configs.GetBool("DRG_OpenerAt90")
                 && IsCurrentlyInOpener)
@@ -384,6 +381,8 @@ namespace Melee
         //Some 0gcds that don't need to a hostile target in attack range.
         protected override bool GeneralAbility(out IAction act)
         {
+            
+
             if (Level == 90
                 && Configs.GetBool("DRG_OpenerAt90")
                 && IsCurrentlyInOpener)
