@@ -276,7 +276,9 @@
                 return EmergencyAbilityOpener(nextGCD, out act);
             }
 
-            if (nextGCD is BaseAction action)
+
+
+            if (nextGCD is BaseAction action && !IsCurrentlyInOpener && InCombat)
             {
                 // We don't want Geirskogul to run without Lance Charge if we're
                 // close to going into Life of the Dragon.
