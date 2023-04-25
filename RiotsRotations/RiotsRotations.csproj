@@ -9,10 +9,17 @@
 	  <AssemblyName />
 	  <RootNamespace />
 	  <Authors>RiotNOR</Authors>
+	  <AssemblyVersion>1.0.3</AssemblyVersion>
+	  <FileVersion>$(AssemblyVersion)</FileVersion>
+	  <Version>$(AssemblyVersion)</Version>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="RotationSolver.Basic" Version="2.3.4" />
+    <Compile Remove="Helpers\CustomFuncs.cs" />
+    <Compile Remove="Melee\Pure_Test.cs" />
+    <Compile Remove="Melee\SAM_Default_UWU.cs" />
+    <Compile Remove="Melee\SAM_Testing.cs" />
+    <Compile Remove="Tank\DRK_NoresRotation.cs" />
   </ItemGroup>
 
 	<ItemGroup>
@@ -57,9 +64,13 @@
 
 	<ItemGroup>
 	  <Folder Include="Healer\" />
+	  <Folder Include="Helpers\" />
 	  <Folder Include="Magical\" />
-	  <Folder Include="Melee\" />
-	  <Folder Include="Tank\" />
 	  <Folder Include="Ranged\" />
+	  <Folder Include="Tank\" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <PackageReference Include="RotationSolver.Basic" Version="2.4.0" />
 	</ItemGroup>
 </Project>

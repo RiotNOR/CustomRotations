@@ -302,7 +302,7 @@
                         if (BattleLitany.CanUse(out act, CanUseOption.MustUse)) return true;
                         if (LanceCharge.CanUse(out act, CanUseOption.MustUse)) return true;
                     }
-                    else if (!Configs.GetBool("DRG_KeepBuffsAligned"))
+                    else if (Level < 60 || !Configs.GetBool("DRG_KeepBuffsAligned"))
                     {
                         if (DragonSight.CanUse(out act, CanUseOption.MustUse)) return true;
                         if (BattleLitany.CanUse(out act, CanUseOption.MustUse)) return true;
