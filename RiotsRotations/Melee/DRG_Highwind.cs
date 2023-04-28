@@ -9,7 +9,7 @@
 
         public override string RotationName => "Riot's Highwind";
 
-        public override string Description => "A rotation with an opener following The Balance, and more.";
+        public override string Description => "A rotation with an opener following the principles of 2min bursts.";
 
         private static bool IsOpenerAvailable { get; set; }
 
@@ -33,6 +33,7 @@
             return base.CreateConfiguration()
                 //.SetBool("DRG_WeaveSafety", true, "Make extra sure we do not insert a third 0GCD after already having cast two (recommended)")
                 .SetBool("DRG_OpenerAt88", false, "Use Lvl. 88+ opener (ignores other settings during the opener itself)")
+                .SetBool("DRG_DragonFireInBurst", false, "Will only use Dragonfire Dive when in burst.")
                 .SetBool("DRG_JumpsOnlyInDirectMelee", true, "Only use jumps if within 1yalm")
                 ;
         }
@@ -120,8 +121,8 @@
          */
         private static bool CanUseAbilitySafely()
         {
-            if (RecordActions.Length > 1 && RecordActions[0].Action.ActionCategory.Value.Name == "Ability"
-                && RecordActions[1].Action.ActionCategory.Value.Name == "Ability")
+            if (RecordActions.Length > 1 && (ActionCate)RecordActions[0].Action.ActionCategory.Value.RowId == ActionCate.Ability
+                && (ActionCate)RecordActions[1].Action.ActionCategory.Value.RowId == ActionCate.Ability)
             {
                 if (RecordActions[1].UsedTime.AddSeconds(2) < DateTime.Now)
                 {
@@ -176,14 +177,23 @@
                     if (Target.DistanceToPlayer() <= 1.2)
                     {
                         if (LazyJump(out action)) return true;
-                        if (DragonFireDive.CanUse(out action, CanUseOption.MustUse)) return true;
+                        if (!Configs.GetBool("DRG_DragonFireInBurst") 
+                            || Configs.GetBool("DRG_DragonFireInBurst") && InBurst && PStatus(StatusID.LanceCharge))
+                        {
+                            if (DragonFireDive.CanUse(out action, CanUseOption.MustUse)) return true;
+                        }
+                        
                         if (SpineShatterDive.CanUse(out action, CanUseOption.MustUseEmpty)) return true;
                     }
                 }
                 else
                 {
                     if (LazyJump(out action)) return true;
-                    if (DragonFireDive.CanUse(out action, CanUseOption.MustUse)) return true;
+                    if (!Configs.GetBool("DRG_DragonFireInBurst")
+                        || Configs.GetBool("DRG_DragonFireInBurst") && InBurst && PStatus(StatusID.LanceCharge))
+                    {
+                        if (DragonFireDive.CanUse(out action, CanUseOption.MustUse)) return true;
+                    }
                     if (SpineShatterDive.CanUse(out action, CanUseOption.MustUseEmpty)) return true;
                 }
             }
@@ -305,8 +315,6 @@
                 return AttackAbilityOpener(out act);
             }
 
-            if (Nastrond.CanUse(out act, CanUseOption.MustUse)) return true;
-
             if (CanUseAbilitySafely())
             {
                 if (RecordActions[0].Action.ActionCategory.Value.Name != "Ability"
@@ -407,6 +415,8 @@
 
             if (nextGCD is BaseAction action && InCombat && CanUseAbilitySafely())
             {
+                if (Nastrond.CanUse(out act, CanUseOption.MustUse)) return true;
+
                 // We don't want Geirskogul to run without Lance Charge if we're
                 // close to going into Life of the Dragon.
                 if (EyeCount == 2
@@ -422,6 +432,12 @@
                     if (DragonSight.CanUse(out act, CanUseOption.MustUse)) return true;
                     if (BattleLitany.CanUse(out act, CanUseOption.MustUse)) return true;
                     if (LanceCharge.CanUse(out act, CanUseOption.MustUse)) return true;
+                    if (Configs.GetBool("DRG_DragonFireInBurst")
+                        && PStatus(StatusID.LanceCharge))
+                    {
+                        //if (DragonFireDive.CanUse(out act, CanUseOption.MustUse)) return true;
+                        if (HandleJumps(out act)) return true;
+                    }
                 }
 
                 // Make sure Heavens' Thrust gets buffed
