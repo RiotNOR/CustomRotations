@@ -121,24 +121,38 @@
          */
         private static bool CanUseAbilitySafely()
         {
-            if (RecordActions.Length > 1 && (ActionCate)RecordActions[0].Action.ActionCategory.Value.RowId == ActionCate.Ability
-                && (ActionCate)RecordActions[1].Action.ActionCategory.Value.RowId == ActionCate.Ability)
+            try
             {
-                if (RecordActions[1].UsedTime.AddSeconds(2) < DateTime.Now)
+                if (RecordActions.Length > 1 && (ActionCate)RecordActions[0].Action.ActionCategory.Value.RowId == ActionCate.Ability
+                && (ActionCate)RecordActions[1].Action.ActionCategory.Value.RowId == ActionCate.Ability)
                 {
-                    //Help.Log("Ability usage safe because 2s has elapsed since second-to-last action. Pause in combat most likely.");
-                    return true;
+                    if (RecordActions[1].UsedTime.AddSeconds(2) < DateTime.Now)
+                    {
+                        //Help.Log("Ability usage safe because 2s has elapsed since second-to-last action. Pause in combat most likely.");
+                        return true;
+                    }
+                    else
+                    {
+                        //Help.Log("Ability usage UNSAFE. Not enough time elapsed");
+                        return false;
+                    }
                 }
                 else
                 {
-                    //Help.Log("Ability usage UNSAFE. Not enough time elapsed");
-                    return false;
+                    //Help.Log("Ability usage SAFE. Last 2 actions were not just 0GCDs");
+                    return true;
                 }
             }
-            else
+            catch (InvalidOperationException)
             {
-                //Help.Log("Ability usage SAFE. Last 2 actions were not just 0GCDs");
-                return true;
+
+                // We don't mind this error as it is a threading 
+                // issue where the collection will be changed.
+                // Does not cause any issues, and I don't want to 
+                // spam /xllog. You should always properly throw
+                // any exceptions. Except this time. (: For now.
+                // @TODO: Actually fix this properly.
+                return false;
             }
         }
 
