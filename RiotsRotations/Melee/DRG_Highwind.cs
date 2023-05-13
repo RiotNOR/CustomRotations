@@ -1,104 +1,28 @@
 ﻿namespace Melee
 {
-    [RotationDesc("Holds back buffs, and will not use GSK if 2 eyes are open so as to not enter Life. Might have to increase burst window timer.", ActionID.LanceCharge, ActionID.DragonSight, ActionID.BattleLitany, ActionID.Geirskogul /* Some actions you used in burst. */)]
-    [SourceCode("https://github.com/RiotNOR/CustomRotations/blob/main/RiotsRotations/Melee/DRG_Highwind.cs")]
+    [RotationDesc("Burst Description here", ActionID.None /* Some actions you used in burst. */)]
+    [LinkDescription("$Your link description here, it is better to link to a png! this attribute can be multiple! $")]
+    [SourceCode("$If your rotation is open source, please write the link to this attribute! $")]
+
+    // Change this base class to your job's base class. It is named like XXX_Base.
     internal class DRG_Highwind : DRG_Base
     {
         //Change this to the game version right now.
-        public override string GameVersion => "6.38";
-
+        public override string GameVersion => "6.4";
         public override string RotationName => "Riot's Highwind";
+        public override string Description => "A rotation with a dynamic opener following The Balance conventions.";
 
-        public override string Description => "A rotation with an opener following the principles of 2min bursts.";
+        private bool IsOpenerAvailable { get; set; }
+        private bool IsCurrentlyInOpener { get; set; }
+        private bool ShouldEndOpener { get; set; }
+        private bool GoThroughFirstPath { get; set; } = true;
 
-        private static bool IsOpenerAvailable { get; set; }
-
-        private static bool IsCurrentlyInOpener { get; set; }
-
-        private static bool ShouldEndOpener { get; set; }
-
-        /*
-         * To make it shorter and faster to use, we make a shorthand 
-         * for Player.HasStatus and Target.HasStatus.
-         */
-        private bool PStatus(StatusID statusID) => Player.HasStatus(true, statusID);
-        private bool PStatusEnd(StatusID statusID, float time) => Player.WillStatusEnd(time, true, statusID);
-        private bool TStatus(StatusID statusID) => Target.HasStatus(true, statusID);
-        private bool TStatusEnd(StatusID statusID, float time) => Target.WillStatusEnd(time, true, statusID);
-
-        // No constructor, so we use this CreateConfiguration() method
-        // to setup our settings.
+        //Extra configurations you want to show on your rotation config.
         protected override IRotationConfigSet CreateConfiguration()
         {
             return base.CreateConfiguration()
-                //.SetBool("DRG_WeaveSafety", true, "Make extra sure we do not insert a third 0GCD after already having cast two (recommended)")
-                .SetBool("DRG_OpenerAt88", false, "Use Lvl. 88+ opener (ignores other settings during the opener itself)")
-                .SetBool("DRG_DragonFireInBurst", false, "Will only use Dragonfire Dive when in burst.")
-                .SetBool("DRG_JumpsOnlyInDirectMelee", true, "Only use jumps if within 1yalm")
-                ;
-        }
-
-        /*
-         * This can be used to do things with your variables or 
-         * whatever upon area change. This does, however, not run
-         * if and when you die. Maybe if you die after you've done an
-         * in-dungeon area change. Bit unsure.
-         */
-        public override void OnTerritoryChanged()
-        {
-            base.OnTerritoryChanged();
-        }
-
-        /*
-         * Just makes sure our opener can actually be ran and complete.
-         * @TODO: Add check that we have no eyes, or handle that
-         * inside the actual opener (probably best to do it that way).
-         */
-        private void HandleOpenerAvailability()
-        {
-            /*
-             * Since we run this method inside EmergencyGCD, we require the
-             * CanUseOption.IgnoreClippingCheck option to be set.
-             * This is because RotationSolver will try to keep 0GCDs from
-             * clipping GCDs. You can, however, skip the CanUseOption if ran in
-             * GeneralAbility for example. However, that has a distance threshold
-             * while EmergencyGCD runs regardless of distance.
-             */
-            if (Configs.GetBool("DRG_OpenerAt88")
-                && DragonSight.CanUse(out _, CanUseOption.IgnoreClippingCheck)
-                && BattleLitany.CanUse(out _, CanUseOption.IgnoreClippingCheck)
-                && LanceCharge.CanUse(out _, CanUseOption.IgnoreClippingCheck)
-                && Player.Level >= 88)
-            {
-                IsOpenerAvailable = true;
-                ShouldEndOpener = false;
-            }
-            else
-            {
-                IsOpenerAvailable = false;
-            }
-        }
-
-        /*
-         * As long as we're above level 18, which is when we first acquire
-         * Disembowel, we can check for the buff "Power Surge". Before
-         * that we will just return true regardless as we cannot buff
-         * anything at that point.
-         */
-        private bool HandlePowerSurge()
-        {
-            if (PStatus(StatusID.PowerSurge))
-            {
-                return true;
-            }
-            else if (Level < 18)
-            {
-                return true;
-            }
-            else
-            {
-                return false;
-            }
+                .SetBool("DRG_DynamicOpeners", false, "Use a dynamic opener from Lvl 50 to 90 instead of off-cd casts. Note: This is controlled with burst! Macro it for full control.")
+                .SetBool("DRG_DragonFireInBurst", false, "Only use Dragonfire Dive when in burst");
         }
 
         /*
@@ -123,35 +47,32 @@
         {
             try
             {
-                if (RecordActions.Length > 1 && (ActionCate)RecordActions[0].Action.ActionCategory.Value.RowId == ActionCate.Ability
-                && (ActionCate)RecordActions[1].Action.ActionCategory.Value.RowId == ActionCate.Ability)
+                if (RecordActions.Length <= 1 ||
+                    (ActionCate)RecordActions[0].Action.ActionCategory.Value.RowId != ActionCate.Ability ||
+                    (ActionCate)RecordActions[1].Action.ActionCategory.Value.RowId != ActionCate.Ability)
                 {
-                    if (RecordActions[1].UsedTime.AddSeconds(2) < DateTime.Now)
-                    {
-                        //Help.Log("Ability usage safe because 2s has elapsed since second-to-last action. Pause in combat most likely.");
-                        return true;
-                    }
-                    else
-                    {
-                        //Help.Log("Ability usage UNSAFE. Not enough time elapsed");
-                        return false;
-                    }
+                    // Last two actions were not just 0GCDs, safe to use ability
+                    return true;
+                }
+
+                if (RecordActions[1].UsedTime.AddSeconds(2) < DateTime.Now)
+                {
+                    // Ability usage safe because 2 seconds have elapsed since second-to-last action. 
+                    // Pause in combat most likely.
+                    return true;
                 }
                 else
                 {
-                    //Help.Log("Ability usage SAFE. Last 2 actions were not just 0GCDs");
-                    return true;
+                    // Ability usage unsafe. Not enough time elapsed.
+                    return false;
                 }
             }
             catch (InvalidOperationException)
             {
-
-                // We don't mind this error as it is a threading 
-                // issue where the collection will be changed.
-                // Does not cause any issues, and I don't want to 
-                // spam /xllog. You should always properly throw
-                // any exceptions. Except this time. (: For now.
-                // @TODO: Actually fix this properly.
+                // We don't mind this error as it is a threading issue where the collection will be changed.
+                // Does not cause any issues, and we don't want to spam the log.
+                // We should always properly throw any exceptions, except this time.
+                // For now, return false.
                 return false;
             }
         }
@@ -186,30 +107,15 @@
         {
             if (RecordActions[0].Action.ActionCategory.Value.Name != "Ability")
             {
-                if (Configs.GetBool("DRG_JumpsOnlyInDirectMelee"))
+                bool dragonFireInBurst = Configs.GetBool("DRG_DragonFireInBurst");
+
+                if (LazyJump(out action)) return true;
+                if (!dragonFireInBurst
+                    || dragonFireInBurst && InBurst && Player.HasStatus(true, StatusID.LanceCharge))
                 {
-                    if (Target.DistanceToPlayer() <= 1.2)
-                    {
-                        if (LazyJump(out action)) return true;
-                        if (!Configs.GetBool("DRG_DragonFireInBurst") 
-                            || Configs.GetBool("DRG_DragonFireInBurst") && InBurst && PStatus(StatusID.LanceCharge))
-                        {
-                            if (DragonFireDive.CanUse(out action, CanUseOption.MustUse)) return true;
-                        }
-                        
-                        if (SpineShatterDive.CanUse(out action, CanUseOption.MustUseEmpty)) return true;
-                    }
+                    if (DragonFireDive.CanUse(out action, CanUseOption.MustUse)) return true;
                 }
-                else
-                {
-                    if (LazyJump(out action)) return true;
-                    if (!Configs.GetBool("DRG_DragonFireInBurst")
-                        || Configs.GetBool("DRG_DragonFireInBurst") && InBurst && PStatus(StatusID.LanceCharge))
-                    {
-                        if (DragonFireDive.CanUse(out action, CanUseOption.MustUse)) return true;
-                    }
-                    if (SpineShatterDive.CanUse(out action, CanUseOption.MustUseEmpty)) return true;
-                }
+                if (SpineShatterDive.CanUse(out action, CanUseOption.MustUseEmpty)) return true;
             }
 
             action = null;
@@ -219,131 +125,71 @@
         #region GCD actions
         protected override bool GeneralGCD(out IAction act)
         {
-            // These will only run if AoE is enabled.
-            // Also, Dragoon AOEs only run if there are 3 or more mobs nearby.
-            if (CoerthanTorment.CanUse(out act)) return true;
-            if (SonicThrust.CanUse(out act)) return true;
-            if (DoomSpike.CanUse(out act)) return true;
-
-            if (PStatus(StatusID.SharperFangandClaw)
-                && FangandClaw.CanUse(out act, CanUseOption.MustUse)) return true;
-
-            if (PStatus(StatusID.EnhancedWheelingThrust)
-                && WheelingThrust.CanUse(out act, CanUseOption.MustUse)) return true;
-
-            if (FullThrust.CanUse(out act)) return true;
-
-            /*
-             * We need proper checks here to surmise whether the target has the
-             * high-level debuff, or the lower one. Also instead of using a bool
-             * to dictate the proper pathing between the two combos we stick
-             * to checking the remaining time on "Power Surge".
-             */
-            if (Level >= 86 && (!TStatus(StatusID.ChaoticSpring) || TStatusEnd(StatusID.ChaoticSpring, 6))
-                || Level < 86 && (!TStatus(StatusID.ChaosThrust) || TStatusEnd(StatusID.ChaosThrust, 6))
-                || PStatusEnd(StatusID.PowerSurge, 10))
+            // Remove this?
+            if (!InCombat)
             {
-                if (ChaosThrust.CanUse(out act, CanUseOption.MustUse)) return true;
-                if (Disembowel.CanUse(out act, CanUseOption.MustUse)) return true;
+                GoThroughFirstPath = true;
             }
 
-            if (VorpalThrust.CanUse(out act)) return true;
+            // These will only run if AoE is enabled.
+            // Also, Dragoon AOEs only run if there are 3 or more mobs nearby.
+            if (!IsCurrentlyInOpener)
+            {
+                if (CoerthanTorment.CanUse(out act)) return true;
+                if (SonicThrust.CanUse(out act)) return true;
+                if (DoomSpike.CanUse(out act)) return true;
+            }
+
+            if (GoThroughFirstPath)
+            {
+                if (IsLastGCD(ActionID.Disembowel)) GoThroughFirstPath = false;
+                if (Disembowel.CanUse(out act)) return true;
+            }
+            else
+            {
+                if (IsLastGCD(false, VorpalThrust)) GoThroughFirstPath = true;
+                if (VorpalThrust.CanUse(out act)) return true;
+            }
+
+            // Regardless of path, cannot use out of order anyway
+            if (WheelingThrust.CanUse(out act)) return true;
+            if (FangandClaw.CanUse(out act)) return true;
+
+            if (FullThrust.CanUse(out act)) return true;
+            if (ChaosThrust.CanUse(out act)) return true;
             if (TrueThrust.CanUse(out act)) return true;
 
-            if (PiercingTalon.CanUse(out act)) return true;
-
-
+            if (!IsCurrentlyInOpener)
+            {
+                if (PiercingTalon.CanUse(out act)) return true;
+            }
 
             act = null;
             return false;
         }
 
+        //For some gcds very important, even more than healing, defense, interrupt, etc.
         protected override bool EmergencyGCD(out IAction act)
         {
-            /*
-             * EmergencyGCD is ran first, ref RotationSolver.Basic.CustomRotation, IAction GCD method
-             * so we just run this here.
-             */
-            HandleOpenerAvailability();
-
-            /*
-             * We are now telling every other function that the Opener
-             * can and is being run.
-             */
-            if (Level >= 88
-                && Configs.GetBool("DRG_OpenerAt88")
-                && IsOpenerAvailable)
-            {
-                IsCurrentlyInOpener = true;
-            }
-
             return base.EmergencyGCD(out act);
         }
-
-        #region GCD Extras
-        //For some gcds that moving forward.
-        [RotationDesc("Optional description for Moving Forward GCD")]
-        [RotationDesc(ActionID.None)]
-        protected override bool MoveForwardGCD(out IAction act)
-        {
-            return base.MoveForwardGCD(out act);
-        }
-
-        [RotationDesc("Optional description for Defense Area GCD")]
-        [RotationDesc(ActionID.None)]
-        protected override bool DefenseAreaGCD(out IAction act)
-        {
-            return base.DefenseAreaGCD(out act);
-        }
-
-        [RotationDesc("Optional description for Defense Single GCD")]
-        [RotationDesc(ActionID.None)]
-        protected override bool DefenseSingleGCD(out IAction act)
-        {
-            return base.DefenseSingleGCD(out act);
-        }
-
-        [RotationDesc("Optional description for Healing Area GCD")]
-        [RotationDesc(ActionID.None)]
-        protected override bool HealAreaGCD(out IAction act)
-        {
-            return base.HealAreaGCD(out act);
-        }
-
-        [RotationDesc("Optional description for Healing Single GCD")]
-        [RotationDesc(ActionID.None)]
-        protected override bool HealSingleGCD(out IAction act)
-        {
-            return base.HealSingleGCD(out act);
-        }
-        #endregion
         #endregion
 
         #region 0GCD actions
         protected override bool AttackAbility(out IAction act)
         {
-            if (Level >= 88
-                && Configs.GetBool("DRG_OpenerAt88")
-                && IsCurrentlyInOpener)
+            if (IsCurrentlyInOpener)
             {
                 return AttackAbilityOpener(out act);
             }
 
-            if (CanUseAbilitySafely())
-            {
-                if (RecordActions[0].Action.ActionCategory.Value.Name != "Ability"
-                    && StarDiver.CanUse(out act, CanUseOption.MustUse)) return true;
-            }
+            // Use Star Diver when possible
+            if (CanUseAbilitySafely() && RecordActions[0].Action.ActionCategory.Value.Name != "Ability"
+                && StarDiver.CanUse(out act, CanUseOption.MustUse)) return true;
 
-            if (HandlePowerSurge()
-                && CanUseAbilitySafely())
-            {
-                if (WyrmwindThrust.CanUse(out act, CanUseOption.MustUse)) return true;
-                if (HandleJumps(out act)) return true;
-
-                if (!IsLastAction(false, HighJump)
-                    && MirageDive.CanUse(out act, CanUseOption.MustUse)) return true;
-            }
+            if (WyrmwindThrust.CanUse(out act, CanUseOption.MustUse)) return true;
+            if (HandleJumps(out act)) return true;
+            if (!IsLastAction(false, HighJump) && MirageDive.CanUse(out act, CanUseOption.MustUse)) return true;
 
             act = null;
             return false;
@@ -351,139 +197,206 @@
 
         private bool AttackAbilityOpener(out IAction act)
         {
-            // Wyrmwind Thrust ends our opener, and thus lets another
-            // function know that we can disable the opener and run things
-            // off cooldown.
-            // @TODO: Should make more checks in case of reopeners and/or filler rotations.
-            if (ShouldEndOpener) IsCurrentlyInOpener = false;
-
-            // Use Wyrmwind Thrust after Raiden Thrust #2 in 0GCD position 1
-            if (IsLastGCD(ActionID.RaidenThrust))
+            if (Level == 90 && IsLastGCD(ActionID.RaidenThrust) && WyrmwindThrust.CanUse(out act, CanUseOption.MustUse))
             {
-                if (WyrmwindThrust.CanUse(out act, CanUseOption.MustUse))
+                ShouldEndOpener = true;
+                return true;
+            }
+
+            if (Geirskogul.CanUse(out act, CanUseOption.MustUse))
+            {
+                if (IsLastGCD(false, WheelingThrust)) return true;
+            }
+
+            if (Level >= 74 && HighJump.CanUse(out act, CanUseOption.MustUse))
+            {
+                if (IsLastGCD(false, FangandClaw)) return true;
+            }
+
+            if (Level < 74 && Jump.CanUse(out act))
+            {
+                if (Level >= 56)
                 {
-                    ShouldEndOpener = true;
-                    return true;
+                    if (Level >= 64 && IsLastGCD(false, FangandClaw)) return true;
+                    if (Level < 64 && IsLastGCD(false, WheelingThrust)) return true;
+                }
+                if (Level < 56 && IsLastGCD(false, ChaosThrust)) return true;
+                if (Level < 50 && IsLastGCD(false, Disembowel)) return true;
+            }
+
+            if (DragonFireDive.CanUse(out act, CanUseOption.MustUse))
+            {
+                if (Level >= 76 && IsLastGCD(ActionID.RaidenThrust)) return true;
+                if (Level >= 50 && IsLastGCD(false, TrueThrust) && IsLastAbility(false, Jump)) return true;
+            }
+
+            if (MirageDive.CanUse(out act, CanUseOption.MustUse))
+            {
+                if (IsLastGCD(false, VorpalThrust)) return true;
+            }
+
+            if (SpineShatterDive.CanUse(out act, CanUseOption.MustUse | CanUseOption.MustUseEmpty))
+            {
+                if (Level >= 50)
+                {
+                    if (Level >= 86 && IsLastGCD(true, FullThrust)) return true;
+                    if (Level >= 84 && IsLastGCD(false, FangandClaw) && IsLastAbility(false, SpineShatterDive))
+                    {
+                        ShouldEndOpener = true;
+                        return true;
+                    }
+                    if (IsLastGCD(false, FullThrust))
+                    {
+                        ShouldEndOpener = true;
+                        return true;
+                    }
                 }
             }
 
-            // Use Spineshatter Dive after Fang and Claw #2 in 0GCD position 1
-            if (IsLastGCD(false, FangandClaw)
-                && IsLastAbility(false, SpineShatterDive))
+            if (ShouldEndOpener)
             {
-                if (SpineShatterDive.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
+                IsCurrentlyInOpener = false;
             }
-
-            // Use Spineshatter Dive after Heavens' Thrust in 0GCD position 1
-            if (IsLastGCD(true, FullThrust))
-            {
-                if (SpineShatterDive.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
-            }
-
-            /* 
-             *  Moved to GeneralAbilityOpener as it doesn't require the player to be close
-             */
-            //// Use Mirage Dive before Heavens' Thrust, after Life Surge
-            //if (IsLastGCD(false, VorpalThrust)
-            //    && abilitiesRemaining == 1)
-            //{
-            //    if (MirageDive.CanUse(out act)) return true;
-            //}
-
-            // Use Dragonfire Dive after Raiden Thrust #1 in 0GCD position 1
-            if (IsLastGCD(ActionID.RaidenThrust))
-            {
-                if (DragonFireDive.CanUse(out act, CanUseOption.MustUse)) return true;
-            }
-
-            // Use High Jump after Fang and Claw #1 in 0GCD position 1
-            if (IsLastGCD(false, FangandClaw))
-            {
-                if (HighJump.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
-            }
-
-            /*
-             *  Moved to GeneralAbilityOpener as it doesn't require the player to be close
-             */
-            //// Use Geirskogul only if no eye exists, in 0GCD position 1
-            //if (IsLastGCD(false, WheelingThrust)
-            //    && JobGauge.EyeCount == 0
-            //    && abilitiesRemaining == 2)
-            //{
-            //    if (Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
-            //}
 
             act = null;
             return false;
         }
 
+        /*
+        private bool AttackAbilityOpener(out IAction act)
+        {
+            if (Level == 90 && IsLastGCD(ActionID.RaidenThrust) && WyrmwindThrust.CanUse(out act, CanUseOption.MustUse))
+            {
+                ShouldEndOpener = true;
+                return true;
+            }
+
+            if (Geirskogul.CanUse(out act, CanUseOption.MustUse))
+            {
+                if (IsLastGCD(false, WheelingThrust)) return true;
+            }
+
+            if (Level >= 74 && HighJump.CanUse(out act, CanUseOption.MustUse))
+            {
+                if (IsLastGCD(false, FangandClaw)) return true;
+            }
+
+            if (Level < 74 && Jump.CanUse(out act))
+            {
+                if (Level >= 56)
+                {
+                    if (Level >= 64
+                        && IsLastGCD(false, FangandClaw)) return true;
+
+                    if (Level < 64
+                        && IsLastGCD(false, WheelingThrust)) return true;
+                }
+
+                if (Level < 56
+                    && IsLastGCD(false, ChaosThrust)) return true;
+
+                if (Level < 50
+                    && IsLastGCD(false, Disembowel)) return true;
+            }
+
+            if (DragonFireDive.CanUse(out act, CanUseOption.MustUse))
+            {
+                if (Level >= 76
+                    && IsLastGCD(ActionID.RaidenThrust))
+                {
+                    return true;
+                }
+
+                if (Level >= 50
+                    && IsLastGCD(false, TrueThrust)
+                    && IsLastAbility(false, Jump))
+                {
+                    return true;
+                }
+            }
+
+            if (MirageDive.CanUse(out act, CanUseOption.MustUse))
+            {
+                if (IsLastGCD(false, VorpalThrust)) return true;
+            }
+
+            if (SpineShatterDive.CanUse(out act, CanUseOption.MustUse | CanUseOption.MustUseEmpty))
+            {
+                if (Level >= 50)
+                {
+                    if (Level >= 86)
+                    {
+                        if (IsLastGCD(true, FullThrust)) return true;
+                    }
+
+                    if (Level >= 84)
+                    {
+                        if (IsLastGCD(false, FangandClaw)
+                            && IsLastAbility(false, SpineShatterDive))
+                        {
+                            ShouldEndOpener = true;
+                            return true;
+                        }
+                    }
+
+                    if (IsLastGCD(false, FullThrust))
+                    {
+                        ShouldEndOpener = true;
+                        return true;
+                    }
+                }
+            }
+
+            if (ShouldEndOpener)
+            {
+                IsCurrentlyInOpener = false;
+            }
+
+            act = null;
+            return false;
+        }
+        */
+
         //For some 0gcds very important, even more than healing, defense, interrupt, etc.
         protected override bool EmergencyAbility(IAction nextGCD, out IAction act)
         {
-            if (Level >= 88
-                && Configs.GetBool("DRG_OpenerAt88")
-                && IsCurrentlyInOpener)
+            if (IsCurrentlyInOpener)
             {
                 return EmergencyAbilityOpener(nextGCD, out act);
             }
 
             if (nextGCD is BaseAction action && InCombat && CanUseAbilitySafely())
             {
+                // Use Nastrond if possible
                 if (Nastrond.CanUse(out act, CanUseOption.MustUse)) return true;
 
-                // We don't want Geirskogul to run without Lance Charge if we're
-                // close to going into Life of the Dragon.
-                if (EyeCount == 2
-                    && PStatus(StatusID.LanceCharge)
-                    && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
+                // Check for Geirskogul with Lance Charge
+                if (EyeCount == 2 && Player.HasStatus(true, StatusID.LanceCharge) && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
 
-                // If we have less than 2 eyes open (0 or 1), feel free to spam Geirskogul.
-                if (EyeCount < 2
-                    && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
+                // Check for Geirskogul without Lance Charge
+                if (EyeCount < 2 && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
 
+                // Use buffs in burst phase
                 if (InBurst)
                 {
                     if (DragonSight.CanUse(out act, CanUseOption.MustUse)) return true;
                     if (BattleLitany.CanUse(out act, CanUseOption.MustUse)) return true;
                     if (LanceCharge.CanUse(out act, CanUseOption.MustUse)) return true;
-                    if (Configs.GetBool("DRG_DragonFireInBurst")
-                        && PStatus(StatusID.LanceCharge))
+                    if (Configs.GetBool("DRG_DragonFireInBurst") && Player.HasStatus(true, StatusID.LanceCharge))
                     {
-                        //if (DragonFireDive.CanUse(out act, CanUseOption.MustUse)) return true;
                         if (HandleJumps(out act)) return true;
                     }
                 }
 
-                // Make sure Heavens' Thrust gets buffed
-                if (nextGCD.IsTheSameTo(true, FullThrust)
-                    && LifeSurge.CanUse(out act, CanUseOption.MustUseEmpty)) return true;
+                // Buff Heavens' Thrust
+                if (nextGCD.IsTheSameTo(true, FullThrust) && LifeSurge.CanUse(out act, CanUseOption.MustUseEmpty)) return true;
 
-                // We buff 5th hit only IF we're inside positional.
-                if (action.EnemyPositional != EnemyPositional.None
-                    && action.Target != null)
+                // Buff 5th hit with Life Surge only if inside positional or have True North
+                if (action.EnemyPositional != EnemyPositional.None && action.Target != null && (Player.HasStatus(true, StatusID.TrueNorth) || action.Target.HasPositional()))
                 {
-                    // If in position for a positional
-                    if (action.EnemyPositional == action.Target.FindEnemyPositional() && action.Target.HasPositional())
+                    if (IsLastGCD(false, WheelingThrust) && nextGCD.IsTheSameTo(false, FangandClaw) || IsLastGCD(false, FangandClaw) && nextGCD.IsTheSameTo(false, WheelingThrust))
                     {
-                        if (IsLastGCD(false, WheelingThrust)
-                            && nextGCD.IsTheSameTo(false, FangandClaw)
-                                || IsLastGCD(false, FangandClaw)
-                                && nextGCD.IsTheSameTo(false, WheelingThrust))
-                        {
-                            return LifeSurge.CanUse(out act, CanUseOption.EmptyOrSkipCombo);
-                        }
-                    }
-
-                    // Or if we have True North
-                    if (Player.HasStatus(true, StatusID.TrueNorth))
-                    {
-                        if (IsLastGCD(false, WheelingThrust)
-                            && nextGCD.IsTheSameTo(false, FangandClaw)
-                                || IsLastGCD(false, FangandClaw)
-                                && nextGCD.IsTheSameTo(false, WheelingThrust))
-                        {
-                            return LifeSurge.CanUse(out act, CanUseOption.EmptyOrSkipCombo);
-                        }
+                        if (LifeSurge.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
                     }
                 }
             }
@@ -493,30 +406,29 @@
 
         private bool EmergencyAbilityOpener(IAction nextGCD, out IAction act)
         {
-            // Buff from Chaotic Spring through Wheeling Thrust #2
-            if (nextGCD.IsTheSameTo(true, ChaosThrust))
+            if (IsLastGCD(false, TrueThrust) && UseBurstMedicine(out act)) return true;
+
+            // Buffs from Chaotic Spring through Wheeling Thrust #2
+            if (nextGCD.IsTheSameTo(true, ChaosThrust) || nextGCD.IsTheSameTo(false, ChaosThrust))
             {
-                if (LanceCharge.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
-                if (DragonSight.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
+                if (LanceCharge.CanUse(out act, CanUseOption.EmptyOrSkipCombo) || DragonSight.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
 
-            // Buff from Wheeling Thrust #1 through Spineshatter Dive #2
-            if (nextGCD.IsTheSameTo(false, WheelingThrust))
+            // Buffs from Wheeling Thrust #1 through Spineshatter Dive #2
+            if (nextGCD.IsTheSameTo(false, WheelingThrust) || (Level < 58 && nextGCD.IsTheSameTo(false, ChaosThrust)))
             {
                 if (BattleLitany.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
 
-            // Buff Fang and Claw in 0GCD position 2
-            if (nextGCD.IsTheSameTo(false, FangandClaw))
+            // Buffs Fang and Claw in 0GCD position 2
+            if (Level >= 60 && nextGCD.IsTheSameTo(false, FangandClaw) && IsLastAbility(false, Geirskogul) ||
+                (Level < 60 && nextGCD.IsTheSameTo(false, FangandClaw)) || (Level < 56 && nextGCD.IsTheSameTo(false, FullThrust)))
             {
                 if (LifeSurge.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
 
-            // Buff Heavens' Thrust in 0GCD position 1
-            if (nextGCD.IsTheSameTo(true, FullThrust))
-            {
-                if (LifeSurge.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
-            }
+            // Buffs Heavens' Thrust in 0GCD position 1
+            if (nextGCD.IsTheSameTo(true, FullThrust) && LifeSurge.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
 
             act = null;
             return false;
@@ -525,84 +437,91 @@
         //Some 0gcds that don't need to a hostile target in attack range.
         protected override bool GeneralAbility(out IAction act)
         {
-            if (Level >= 88
-                && Configs.GetBool("DRG_OpenerAt88")
-                && IsCurrentlyInOpener)
-            {
-                return GeneralAbilityOpener(out act);
-            }
-
             return base.GeneralAbility(out act);
         }
 
-        private bool GeneralAbilityOpener(out IAction act)
-        {
-            // Immediately use Mirage Dive to get ready regardless of distance
-            if (Player.HasStatus(true, StatusID.DiveReady)
-                && MirageDive.CanUse(out act)) return true;
+        #endregion
 
-            // Use Geirskogul only if no eye exists, in 0GCD position 1
-            if (IsLastGCD(false, WheelingThrust)
-                && EyeCount == 0)
+        #region Extra
+        //For counting down action when pary counting down is active.
+        protected override IAction CountDownAction(float remainTime)
+        {
+            return base.CountDownAction(remainTime);
+        }
+
+        //This is the method to update all field you wrote, it is used first during one frame.
+        protected override void UpdateInfo()
+        {
+            if (Configs.GetBool("DRG_DynamicOpeners") && Level >= 50 && InBurst)
             {
-                if (Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
+                HandleOpenerAvailability();
+
+                if (IsOpenerAvailable)
+                {
+                    IsCurrentlyInOpener = true;
+                    ShouldEndOpener = false;
+                }
+            }
+            else
+            {
+                IsOpenerAvailable = false;
+                IsCurrentlyInOpener = false;
+                ShouldEndOpener = false;
             }
 
-            act = null;
-            return false;
+            if (Player.IsDead)
+            {
+                GoThroughFirstPath = true;
+            }
+
+            base.UpdateInfo();
         }
 
-        #region 0GCD Extras
-        //Some 0gcds that moving forward. In general, it doesn't need to be override.
-        [RotationDesc(ActionID.SpineShatterDive, ActionID.DragonFireDive)]
-        protected override bool MoveForwardAbility(out IAction act)
+        //This method is used when player change the terriroty, such as go into one duty, you can use it to set the field.
+        public override void OnTerritoryChanged()
         {
-            if (SpineShatterDive.CanUse(out act)) return true;
-            if (DragonFireDive.CanUse(out act, CanUseOption.MustUse)) return true;
-
-            return false;
+            GoThroughFirstPath = true;
+            base.OnTerritoryChanged();
         }
 
-        //Some 0gcds that moving back. In general, it doesn't need to be override.
-        [RotationDesc("Optional description for Moving Back 0GCD")]
-        [RotationDesc(ActionID.None)]
-        protected override bool MoveBackAbility(out IAction act)
+        //This method is used to debug. If you want to show some information in Debug panel, show something here.
+        public override void DisplayStatus()
         {
-            return base.MoveBackAbility(out act);
-        }
-
-        //Some 0gcds that defense area.
-        //[RotationDesc("Optional description for Defense Area 0GCD")]
-        //[RotationDesc(ActionID.None)]
-        //protected override bool DefenseAreaAbility(out IAction act)
-        //{
-        //    return base.DefenseAreaAbility(out act);
-        //}
-
-        //Some 0gcds that defense single.
-        [RotationDesc("Optional description for Defense Single 0GCD")]
-        [RotationDesc(ActionID.None)]
-        protected override bool DefenseSingleAbility(out IAction act)
-        {
-            return base.DefenseSingleAbility(out act);
-        }
-
-        //Some 0gcds that healing area.
-        [RotationDesc("Optional description for Healing Area 0GCD")]
-        [RotationDesc(ActionID.None)]
-        protected override bool HealAreaAbility(out IAction act)
-        {
-            return base.HealAreaAbility(out act);
-        }
-
-        //Some 0gcds that healing single.
-        [RotationDesc("Optional description for Healing Single 0GCD")]
-        [RotationDesc(ActionID.None)]
-        protected override bool HealSingleAbility(out IAction act)
-        {
-            return base.HealSingleAbility(out act);
+            base.DisplayStatus();
         }
         #endregion
-        #endregion
+
+        private void HandleOpenerAvailability()
+        {
+            bool hasDragonSight = DragonSight.CanUse(out _, CanUseOption.IgnoreClippingCheck);
+            bool hasBattleLitany = BattleLitany.CanUse(out _, CanUseOption.IgnoreClippingCheck);
+            bool hasLanceCharge = LanceCharge.CanUse(out _, CanUseOption.IgnoreClippingCheck);
+
+            if (Level >= 88)
+            {
+                IsOpenerAvailable = hasDragonSight && hasBattleLitany && hasLanceCharge;
+                return;
+            }
+            else if (Level >= 66)
+            {
+                IsOpenerAvailable = hasDragonSight && hasBattleLitany && hasLanceCharge;
+                return;
+            }
+            else if (Level >= 52)
+            {
+                IsOpenerAvailable = hasBattleLitany && hasLanceCharge;
+                return;
+            }
+            else if (Level >= 30)
+            {
+                IsOpenerAvailable = hasLanceCharge;
+                return;
+            }
+            else
+            {
+                IsOpenerAvailable = false;
+                return;
+            }
+        }
     }
 }
