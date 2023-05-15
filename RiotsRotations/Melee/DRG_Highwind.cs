@@ -1,4 +1,6 @@
-﻿namespace Melee
+﻿using ImGuiNET;
+
+namespace Melee
 {
     [RotationDesc("Burst Description here", ActionID.None /* Some actions you used in burst. */)]
     [LinkDescription("$Your link description here, it is better to link to a png! this attribute can be multiple! $")]
@@ -8,13 +10,18 @@
     internal class DRG_Highwind : DRG_Base
     {
         //Change this to the game version right now.
-        public override string GameVersion => "6.4";
+        public override string GameVersion => "6.38";
         public override string RotationName => "Riot's Highwind";
         public override string Description => "A rotation with a dynamic opener following The Balance conventions.";
 
         private bool IsOpenerAvailable { get; set; }
         private bool IsCurrentlyInOpener { get; set; }
         private bool ShouldEndOpener { get; set; }
+
+        /*
+         * We use this bool as RS does not yet reset IsLastGCD,
+         * IsLastAbility, and IsLastAction upon death or other circumstances.
+         */
         private bool GoThroughFirstPath { get; set; } = true;
 
         //Extra configurations you want to show on your rotation config.
@@ -22,7 +29,8 @@
         {
             return base.CreateConfiguration()
                 .SetBool("DRG_DynamicOpeners", false, "Use a dynamic opener from Lvl 50 to 90 instead of off-cd casts. Note: This is controlled with burst! Macro it for full control.")
-                .SetBool("DRG_DragonFireInBurst", false, "Only use Dragonfire Dive when in burst");
+                .SetBool("DRG_DragonFireInBurst", false, "Only use Dragonfire Dive when in burst")
+                .SetFloat("DRG_JumpDistance", 3, "Distance from target to allow jump usage", 0, 3, .1f);
         }
 
         /*
@@ -105,17 +113,20 @@
          */
         private bool HandleJumps(out IAction action)
         {
-            if (RecordActions[0].Action.ActionCategory.Value.Name != "Ability")
+            if (Target.DistanceToPlayer() <= Configs.GetFloat("DRG_JumpDistance"))
             {
-                bool dragonFireInBurst = Configs.GetBool("DRG_DragonFireInBurst");
-
-                if (LazyJump(out action)) return true;
-                if (!dragonFireInBurst
-                    || dragonFireInBurst && InBurst && Player.HasStatus(true, StatusID.LanceCharge))
+                if (RecordActions[0].Action.ActionCategory.Value.Name != "Ability")
                 {
-                    if (DragonFireDive.CanUse(out action, CanUseOption.MustUse)) return true;
+                    bool dragonFireInBurst = Configs.GetBool("DRG_DragonFireInBurst");
+
+                    if (LazyJump(out action)) return true;
+                    if (!dragonFireInBurst
+                        || dragonFireInBurst && InBurst && Player.HasStatus(true, StatusID.LanceCharge))
+                    {
+                        if (DragonFireDive.CanUse(out action, CanUseOption.MustUse)) return true;
+                    }
+                    if (SpineShatterDive.CanUse(out action, CanUseOption.MustUseEmpty)) return true;
                 }
-                if (SpineShatterDive.CanUse(out action, CanUseOption.MustUseEmpty)) return true;
             }
 
             action = null;
@@ -125,12 +136,6 @@
         #region GCD actions
         protected override bool GeneralGCD(out IAction act)
         {
-            // Remove this?
-            if (!InCombat)
-            {
-                GoThroughFirstPath = true;
-            }
-
             // These will only run if AoE is enabled.
             // Also, Dragoon AOEs only run if there are 3 or more mobs nearby.
             if (!IsCurrentlyInOpener)
@@ -185,6 +190,7 @@
 
             // Use Star Diver when possible
             if (CanUseAbilitySafely() && RecordActions[0].Action.ActionCategory.Value.Name != "Ability"
+                && Target.DistanceToPlayer() <= Configs.GetFloat("DRG_JumpDistance")
                 && StarDiver.CanUse(out act, CanUseOption.MustUse)) return true;
 
             if (WyrmwindThrust.CanUse(out act, CanUseOption.MustUse)) return true;
@@ -469,27 +475,56 @@
                 ShouldEndOpener = false;
             }
 
-            if (Player.IsDead)
+            if (DataCenter.LastComboAction == ActionID.Disembowel)
+            {
+                GoThroughFirstPath = false;
+            }
+            else if (DataCenter.LastComboAction == ActionID.VorpalThrust || Player.IsDead)
             {
                 GoThroughFirstPath = true;
             }
-
-            base.UpdateInfo();
         }
 
         //This method is used when player change the terriroty, such as go into one duty, you can use it to set the field.
         public override void OnTerritoryChanged()
         {
             GoThroughFirstPath = true;
-            base.OnTerritoryChanged();
         }
 
         //This method is used to debug. If you want to show some information in Debug panel, show something here.
         public override void DisplayStatus()
         {
-            base.DisplayStatus();
+            var openerStatus = IsOpenerAvailable ? "Available." : "Unavailable.";
+
+            if (!InBurst && !IsOpenerAvailable)
+            {
+                openerStatus = "Unavailable because AutoBurst is turned off.";
+            }
+
+            ImGui.Text("Opener availability: " + openerStatus);
+            ImGui.Text("Last combo action: " + DataCenter.LastComboAction);
+            ImGui.Text("Next GCD combo path: " + (GoThroughFirstPath ? "Disembowel." : "Vorpal Thrust."));
+
+#if DEBUG
+            ImGui.Separator();
+            ImGui.Text("Last used GCD: " + DataCenter.LastGCD);
+            ImGui.Text("Last used 0GCD: " + DataCenter.LastAbility);
+            ImGui.Text("Last used action: " + DataCenter.LastAction);
+
+            ImGui.Separator();
+
+            ImGui.Text("Is True Thrust last used GCD: " + IsLastGCD(false, TrueThrust));
+            ImGui.Separator();
+            ImGui.Text("Is duty started: " + Service.DutyState.IsDutyStarted);
+
+            ImGui.Text("Is bound by duty95: " + Service.Conditions[ConditionFlag.BoundByDuty95]);
+            ImGui.Text("Is bound by duty56: " + Service.Conditions[ConditionFlag.BoundByDuty56]);
+            ImGui.Text("Is bound to duty97: " + Service.Conditions[ConditionFlag.BoundToDuty97]);
+            ImGui.Text("Is bound by duty: " + Service.Conditions[ConditionFlag.BoundByDuty]);
+#endif
         }
-        #endregion
+
+        
 
         private void HandleOpenerAvailability()
         {
@@ -523,5 +558,6 @@
                 return;
             }
         }
+#endregion
     }
 }
