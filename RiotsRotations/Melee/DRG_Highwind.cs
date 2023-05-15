@@ -2,14 +2,12 @@
 
 namespace Melee
 {
-    [RotationDesc("Burst Description here", ActionID.None /* Some actions you used in burst. */)]
+    [RotationDesc("Will buff with LC, DS, and BL. Also includes an option to include Dragonfire Dive as burst", ActionID.LanceCharge, ActionID.DragonSight, ActionID.BattleLitany, ActionID.DragonFireDive /* Some actions you used in burst. */)]
     [LinkDescription("$Your link description here, it is better to link to a png! this attribute can be multiple! $")]
-    [SourceCode("$If your rotation is open source, please write the link to this attribute! $")]
+    [SourceCode("$https://github.com/RiotNOR/CustomRotations$")]
 
-    // Change this base class to your job's base class. It is named like XXX_Base.
     internal class DRG_Highwind : DRG_Base
     {
-        //Change this to the game version right now.
         public override string GameVersion => "6.38";
         public override string RotationName => "Riot's Highwind";
         public override string Description => "A rotation with a dynamic opener following The Balance conventions.";
@@ -21,6 +19,8 @@ namespace Melee
         /*
          * We use this bool as RS does not yet reset IsLastGCD,
          * IsLastAbility, and IsLastAction upon death or other circumstances.
+         * 
+         * EDIT: Has been added, but will leave this here.
          */
         private bool GoThroughFirstPath { get; set; } = true;
 
