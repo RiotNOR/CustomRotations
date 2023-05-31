@@ -1,4 +1,6 @@
-﻿using ImGuiNET;
+﻿using Dalamud.Logging;
+
+using ImGuiNET;
 
 namespace Melee
 {
@@ -8,7 +10,7 @@ namespace Melee
 
     internal class DRG_Highwind : DRG_Base
     {
-        public override string GameVersion => "6.38";
+        public override string GameVersion => "6.4";
         public override string RotationName => "Riot's Highwind";
         public override string Description => "A rotation with a dynamic opener following The Balance conventions.";
 
@@ -18,7 +20,7 @@ namespace Melee
 
         /*
          * We use this bool as RS does not yet reset IsLastGCD,
-         * IsLastAbility, and IsLastAction upon death or other circumstances.
+         * IsLastAbility, and IsLastAction upon death or other circumstances.asmInfo.Value.Name
          * 
          * EDIT: Has been added, but will leave this here.
          */
@@ -29,6 +31,8 @@ namespace Melee
         {
             return base.CreateConfiguration()
                 .SetBool("DRG_DynamicOpeners", false, "Use a dynamic opener from Lvl 50 to 90 instead of off-cd casts. Note: This is controlled with burst! Macro it for full control.")
+                .SetBool("DRG_BurstOpener", false, "Use burst mode to control opener -- useful for dungeons I suppose")
+                .SetBool("DRG_SyncGeirskogul", false, "Sync Lance Charge to be within 5 seconds of Geirskogul CD")
                 .SetBool("DRG_DragonFireInBurst", false, "Only use Dragonfire Dive when in burst")
                 .SetFloat("DRG_JumpDistance", 3, "Distance from target to allow jump usage", 0, 3, .1f);
         }
@@ -55,15 +59,17 @@ namespace Melee
         {
             try
             {
-                if (RecordActions.Length <= 1 ||
-                    (ActionCate)RecordActions[0].Action.ActionCategory.Value.RowId != ActionCate.Ability ||
-                    (ActionCate)RecordActions[1].Action.ActionCategory.Value.RowId != ActionCate.Ability)
+                if (RecordActions != null && RecordActions.Length >= 1)
                 {
-                    // Last two actions were not just 0GCDs, safe to use ability
-                    return true;
+                    if ((ActionCate)RecordActions[0].Action.ActionCategory.Value.RowId != ActionCate.Ability ||
+                        (ActionCate)RecordActions[1].Action.ActionCategory.Value.RowId != ActionCate.Ability)
+                    {
+                        // Last two actions were not just 0GCDs, safe to use ability
+                        return true;
+                    }
                 }
 
-                if (RecordActions[1].UsedTime.AddSeconds(2) < DateTime.Now)
+                if (RecordActions != null && RecordActions.Length >= 1 && RecordActions[1].UsedTime.AddSeconds(2) < DateTime.Now)
                 {
                     // Ability usage safe because 2 seconds have elapsed since second-to-last action. 
                     // Pause in combat most likely.
@@ -81,6 +87,7 @@ namespace Melee
                 // Does not cause any issues, and we don't want to spam the log.
                 // We should always properly throw any exceptions, except this time.
                 // For now, return false.
+                PluginLog.LogWarning("Invalid operation exception in CanUseAbilitySafely()");
                 return false;
             }
         }
@@ -92,7 +99,7 @@ namespace Melee
          */
         private static bool LazyJump(out IAction act)
         {
-            if (Level >= 74)
+            if (HighJump.EnoughLevel)
             {
                 if (HighJump.CanUse(out act, CanUseOption.MustUse)) return true;
             }
@@ -113,9 +120,9 @@ namespace Melee
          */
         private bool HandleJumps(out IAction action)
         {
-            if (Target.DistanceToPlayer() <= Configs.GetFloat("DRG_JumpDistance"))
+            if (Target != null && Target.DistanceToPlayer() <= Configs.GetFloat("DRG_JumpDistance"))
             {
-                if (RecordActions[0].Action.ActionCategory.Value.Name != "Ability")
+                if (RecordActions != null && RecordActions.Length >= 1 && RecordActions[0].Action.ActionCategory.Value.Name != "Ability")
                 {
                     bool dragonFireInBurst = Configs.GetBool("DRG_DragonFireInBurst");
 
@@ -203,7 +210,7 @@ namespace Melee
 
         private bool AttackAbilityOpener(out IAction act)
         {
-            if (Level == 90 && IsLastGCD(ActionID.RaidenThrust) && WyrmwindThrust.CanUse(out act, CanUseOption.MustUse))
+            if (IsLastGCD(ActionID.RaidenThrust) && WyrmwindThrust.CanUse(out act, CanUseOption.MustUse))
             {
                 ShouldEndOpener = true;
                 return true;
@@ -214,26 +221,26 @@ namespace Melee
                 if (IsLastGCD(false, WheelingThrust)) return true;
             }
 
-            if (Level >= 74 && HighJump.CanUse(out act, CanUseOption.MustUse))
+            if (HighJump.EnoughLevel && HighJump.CanUse(out act, CanUseOption.MustUse))
             {
                 if (IsLastGCD(false, FangandClaw)) return true;
             }
 
-            if (Level < 74 && Jump.CanUse(out act))
+            if (!HighJump.EnoughLevel && Jump.CanUse(out act))
             {
-                if (Level >= 56)
+                if (FangandClaw.EnoughLevel)
                 {
-                    if (Level >= 64 && IsLastGCD(false, FangandClaw)) return true;
-                    if (Level < 64 && IsLastGCD(false, WheelingThrust)) return true;
+                    if (LanceMastery.EnoughLevel && IsLastGCD(false, FangandClaw)) return true;
+                    if (!LanceMastery.EnoughLevel && IsLastGCD(false, WheelingThrust)) return true;
                 }
-                if (Level < 56 && IsLastGCD(false, ChaosThrust)) return true;
-                if (Level < 50 && IsLastGCD(false, Disembowel)) return true;
+                if (!FangandClaw.EnoughLevel && IsLastGCD(false, ChaosThrust)) return true;
+                if (!ChaosThrust.EnoughLevel && IsLastGCD(false, Disembowel)) return true;
             }
 
             if (DragonFireDive.CanUse(out act, CanUseOption.MustUse))
             {
-                if (Level >= 76 && IsLastGCD(ActionID.RaidenThrust)) return true;
-                if (Level >= 50 && IsLastGCD(false, TrueThrust) && IsLastAbility(false, Jump)) return true;
+                if (LanceMastery2.EnoughLevel && IsLastGCD(ActionID.RaidenThrust)) return true;
+                if (ChaosThrust.EnoughLevel && IsLastGCD(false, TrueThrust) && IsLastAbility(false, Jump)) return true;
             }
 
             if (MirageDive.CanUse(out act, CanUseOption.MustUse))
@@ -243,10 +250,11 @@ namespace Melee
 
             if (SpineShatterDive.CanUse(out act, CanUseOption.MustUse | CanUseOption.MustUseEmpty))
             {
-                if (Level >= 50)
+                // Level 50. Meh
+                if (ChaosThrust.EnoughLevel)
                 {
-                    if (Level >= 86 && IsLastGCD(true, FullThrust)) return true;
-                    if (Level >= 84 && IsLastGCD(false, FangandClaw) && IsLastAbility(false, SpineShatterDive))
+                    if (LanceMastery3.EnoughLevel && IsLastGCD(true, FullThrust)) return true;
+                    if (EnhancedSpineshatterDive.EnoughLevel && IsLastGCD(false, FangandClaw) && IsLastAbility(false, SpineShatterDive))
                     {
                         ShouldEndOpener = true;
                         return true;
@@ -267,101 +275,6 @@ namespace Melee
             act = null;
             return false;
         }
-
-        /*
-        private bool AttackAbilityOpener(out IAction act)
-        {
-            if (Level == 90 && IsLastGCD(ActionID.RaidenThrust) && WyrmwindThrust.CanUse(out act, CanUseOption.MustUse))
-            {
-                ShouldEndOpener = true;
-                return true;
-            }
-
-            if (Geirskogul.CanUse(out act, CanUseOption.MustUse))
-            {
-                if (IsLastGCD(false, WheelingThrust)) return true;
-            }
-
-            if (Level >= 74 && HighJump.CanUse(out act, CanUseOption.MustUse))
-            {
-                if (IsLastGCD(false, FangandClaw)) return true;
-            }
-
-            if (Level < 74 && Jump.CanUse(out act))
-            {
-                if (Level >= 56)
-                {
-                    if (Level >= 64
-                        && IsLastGCD(false, FangandClaw)) return true;
-
-                    if (Level < 64
-                        && IsLastGCD(false, WheelingThrust)) return true;
-                }
-
-                if (Level < 56
-                    && IsLastGCD(false, ChaosThrust)) return true;
-
-                if (Level < 50
-                    && IsLastGCD(false, Disembowel)) return true;
-            }
-
-            if (DragonFireDive.CanUse(out act, CanUseOption.MustUse))
-            {
-                if (Level >= 76
-                    && IsLastGCD(ActionID.RaidenThrust))
-                {
-                    return true;
-                }
-
-                if (Level >= 50
-                    && IsLastGCD(false, TrueThrust)
-                    && IsLastAbility(false, Jump))
-                {
-                    return true;
-                }
-            }
-
-            if (MirageDive.CanUse(out act, CanUseOption.MustUse))
-            {
-                if (IsLastGCD(false, VorpalThrust)) return true;
-            }
-
-            if (SpineShatterDive.CanUse(out act, CanUseOption.MustUse | CanUseOption.MustUseEmpty))
-            {
-                if (Level >= 50)
-                {
-                    if (Level >= 86)
-                    {
-                        if (IsLastGCD(true, FullThrust)) return true;
-                    }
-
-                    if (Level >= 84)
-                    {
-                        if (IsLastGCD(false, FangandClaw)
-                            && IsLastAbility(false, SpineShatterDive))
-                        {
-                            ShouldEndOpener = true;
-                            return true;
-                        }
-                    }
-
-                    if (IsLastGCD(false, FullThrust))
-                    {
-                        ShouldEndOpener = true;
-                        return true;
-                    }
-                }
-            }
-
-            if (ShouldEndOpener)
-            {
-                IsCurrentlyInOpener = false;
-            }
-
-            act = null;
-            return false;
-        }
-        */
 
         //For some 0gcds very important, even more than healing, defense, interrupt, etc.
         protected override bool EmergencyAbility(IAction nextGCD, out IAction act)
@@ -385,13 +298,42 @@ namespace Melee
                 // Use buffs in burst phase
                 if (InBurst)
                 {
-                    if (DragonSight.CanUse(out act, CanUseOption.MustUse)) return true;
-                    if (BattleLitany.CanUse(out act, CanUseOption.MustUse)) return true;
-                    if (LanceCharge.CanUse(out act, CanUseOption.MustUse)) return true;
+                    if (Configs.GetBool("DRG_SyncGeirskogul")
+                        && (!Geirskogul.IsCoolingDown || Geirskogul.ElapsedAfter(25)))
+                    {
+                        if (LanceCharge.CanUse(out act, CanUseOption.MustUse)) return true;
+                    }
+                    else if (!Configs.GetBool("DRG_SyncGeirskogul"))
+                    {
+                        if (LanceCharge.CanUse(out act, CanUseOption.MustUse)) return true;
+                    }
+
+                    //if (LanceCharge.CanUse(out act, CanUseOption.MustUse)) return true;
+
+                    if (Player.HasStatus(true, StatusID.LanceCharge))
+                    {
+                        if (BattleLitany.CanUse(out act, CanUseOption.MustUse)) return true;
+                        if (DragonSight.CanUse(out act, CanUseOption.MustUse)) return true;
+                    }
+
                     if (Configs.GetBool("DRG_DragonFireInBurst") && Player.HasStatus(true, StatusID.LanceCharge))
                     {
                         if (HandleJumps(out act)) return true;
                     }
+                }
+
+                if (Player.HasStatus(true, StatusID.LanceCharge))
+                {
+                    if (BattleLitany.CanUse(out act, CanUseOption.MustUse)) return true;
+                    if (DragonSight.CanUse(out act, CanUseOption.MustUse)) return true;
+                }
+
+                if (Configs.GetBool("DRG_DragonFireInBurst")
+                    && Player.HasStatus(true, StatusID.LanceCharge)
+                    && Player.HasStatus(true, StatusID.RightEye)
+                    && Player.HasStatus(true, StatusID.BattleLitany))
+                {
+                    if (HandleJumps(out act)) return true;
                 }
 
                 // Buff Heavens' Thrust
@@ -412,23 +354,27 @@ namespace Melee
 
         private bool EmergencyAbilityOpener(IAction nextGCD, out IAction act)
         {
+            if (Nastrond.CanUse(out act, CanUseOption.MustUse)) return true;
+
+            if (CanUseAbilitySafely()
+                && Target.DistanceToPlayer() <= Configs.GetFloat("DRG_JumpDistance")
+                && StarDiver.CanUse(out act, CanUseOption.MustUse)) return true;
+
             if (IsLastGCD(false, TrueThrust) && UseBurstMedicine(out act)) return true;
 
-            // Buffs from Chaotic Spring through Wheeling Thrust #2
             if (nextGCD.IsTheSameTo(true, ChaosThrust) || nextGCD.IsTheSameTo(false, ChaosThrust))
             {
                 if (LanceCharge.CanUse(out act, CanUseOption.EmptyOrSkipCombo) || DragonSight.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
 
-            // Buffs from Wheeling Thrust #1 through Spineshatter Dive #2
-            if (nextGCD.IsTheSameTo(false, WheelingThrust) || (Level < 58 && nextGCD.IsTheSameTo(false, ChaosThrust)))
+            if (nextGCD.IsTheSameTo(false, WheelingThrust) || (!WheelingThrust.EnoughLevel && nextGCD.IsTheSameTo(false, ChaosThrust)))
             {
                 if (BattleLitany.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
 
             // Buffs Fang and Claw in 0GCD position 2
-            if (Level >= 60 && nextGCD.IsTheSameTo(false, FangandClaw) && IsLastAbility(false, Geirskogul) ||
-                (Level < 60 && nextGCD.IsTheSameTo(false, FangandClaw)) || (Level < 56 && nextGCD.IsTheSameTo(false, FullThrust)))
+            if (Geirskogul.EnoughLevel && nextGCD.IsTheSameTo(false, FangandClaw) && IsLastAbility(false, Geirskogul) ||
+                (!Geirskogul.EnoughLevel && nextGCD.IsTheSameTo(false, FangandClaw)) || (!FangandClaw.EnoughLevel && nextGCD.IsTheSameTo(false, FullThrust)))
             {
                 if (LifeSurge.CanUse(out act, CanUseOption.EmptyOrSkipCombo)) return true;
             }
@@ -440,7 +386,7 @@ namespace Melee
             return false;
         }
 
-        //Some 0gcds that don't need to a hostile target in attack range.
+        //Some 0gcds that don't need to a hostile target in attack range.  
         protected override bool GeneralAbility(out IAction act)
         {
             return base.GeneralAbility(out act);
@@ -458,7 +404,7 @@ namespace Melee
         //This is the method to update all field you wrote, it is used first during one frame.
         protected override void UpdateInfo()
         {
-            if (Configs.GetBool("DRG_DynamicOpeners") && Level >= 50 && InBurst)
+            if (Configs.GetBool("DRG_DynamicOpeners") && DragonFireDive.EnoughLevel && InBurst)
             {
                 HandleOpenerAvailability();
 
@@ -505,7 +451,6 @@ namespace Melee
             ImGui.Text("Last combo action: " + DataCenter.LastComboAction);
             ImGui.Text("Next GCD combo path: " + (GoThroughFirstPath ? "Disembowel." : "Vorpal Thrust."));
 
-#if DEBUG
             ImGui.Separator();
             ImGui.Text("Last used GCD: " + DataCenter.LastGCD);
             ImGui.Text("Last used 0GCD: " + DataCenter.LastAbility);
@@ -515,49 +460,46 @@ namespace Melee
 
             ImGui.Text("Is True Thrust last used GCD: " + IsLastGCD(false, TrueThrust));
             ImGui.Separator();
-            ImGui.Text("Is duty started: " + Service.DutyState.IsDutyStarted);
+            //ImGui.Text("Is duty started: " + Service.DutyState.IsDutyStarted);
 
-            ImGui.Text("Is bound by duty95: " + Service.Conditions[ConditionFlag.BoundByDuty95]);
-            ImGui.Text("Is bound by duty56: " + Service.Conditions[ConditionFlag.BoundByDuty56]);
-            ImGui.Text("Is bound to duty97: " + Service.Conditions[ConditionFlag.BoundToDuty97]);
-            ImGui.Text("Is bound by duty: " + Service.Conditions[ConditionFlag.BoundByDuty]);
-#endif
+            ImGui.Separator();
+
+            var willUseAoe = NumberOfHostilesIn(3);
+            ImGui.Text("Hostiles in range for aoe: " + willUseAoe);
         }
 
-        
+
 
         private void HandleOpenerAvailability()
         {
-            bool hasDragonSight = DragonSight.CanUse(out _, CanUseOption.IgnoreClippingCheck);
-            bool hasBattleLitany = BattleLitany.CanUse(out _, CanUseOption.IgnoreClippingCheck);
-            bool hasLanceCharge = LanceCharge.CanUse(out _, CanUseOption.IgnoreClippingCheck);
+            if (Configs.GetBool("DRG_BurstOpener") && InBurst || !Configs.GetBool("DRG_BurstOpener"))
+            {
+                bool hasDragonSight = DragonSight.CanUse(out _, CanUseOption.IgnoreClippingCheck);
+                bool hasBattleLitany = BattleLitany.CanUse(out _, CanUseOption.IgnoreClippingCheck);
+                bool hasLanceCharge = LanceCharge.CanUse(out _, CanUseOption.IgnoreClippingCheck);
 
-            if (Level >= 88)
-            {
-                IsOpenerAvailable = hasDragonSight && hasBattleLitany && hasLanceCharge;
-                return;
-            }
-            else if (Level >= 66)
-            {
-                IsOpenerAvailable = hasDragonSight && hasBattleLitany && hasLanceCharge;
-                return;
-            }
-            else if (Level >= 52)
-            {
-                IsOpenerAvailable = hasBattleLitany && hasLanceCharge;
-                return;
-            }
-            else if (Level >= 30)
-            {
-                IsOpenerAvailable = hasLanceCharge;
-                return;
-            }
-            else
-            {
-                IsOpenerAvailable = false;
-                return;
+                if (DragonSight.EnoughLevel)
+                {
+                    IsOpenerAvailable = hasDragonSight && hasBattleLitany && hasLanceCharge;
+                    return;
+                }
+                else if (BattleLitany.EnoughLevel)
+                {
+                    IsOpenerAvailable = hasBattleLitany && hasLanceCharge;
+                    return;
+                }
+                else if (LanceCharge.EnoughLevel)
+                {
+                    IsOpenerAvailable = hasLanceCharge;
+                    return;
+                }
+                else
+                {
+                    IsOpenerAvailable = false;
+                    return;
+                }
             }
         }
-#endregion
+        #endregion
     }
 }
