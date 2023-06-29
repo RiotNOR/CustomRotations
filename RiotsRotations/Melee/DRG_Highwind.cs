@@ -10,7 +10,7 @@ namespace Melee
 
     internal class DRG_Highwind : DRG_Base
     {
-        public override string GameVersion => "6.4";
+        public override string GameVersion => "6.42";
         public override string RotationName => "Riot's Highwind";
         public override string Description => "A rotation with a dynamic opener following The Balance conventions.";
 
@@ -31,9 +31,12 @@ namespace Melee
         {
             return base.CreateConfiguration()
                 .SetBool("DRG_DynamicOpeners", false, "Use a dynamic opener from Lvl 50 to 90 instead of off-cd casts. Note: This is controlled with burst! Macro it for full control.")
+                //.SetBool("DRG_OpenerTincture", false, "Automagically use first tincture in opener")
                 .SetBool("DRG_BurstOpener", false, "Use burst mode to control opener -- useful for dungeons I suppose")
                 .SetBool("DRG_SyncGeirskogul", false, "Sync Lance Charge to be within 5 seconds of Geirskogul CD")
                 .SetBool("DRG_DragonFireInBurst", false, "Only use Dragonfire Dive when in burst")
+                .SetBool("DRG_SpineshatterInBurst", false, "Only use Spineshatter Dive when in burst")
+                .SetBool("DRG_NoJumpsIfMoving", false, "Only jump if standing still")
                 .SetFloat("DRG_JumpDistance", 3, "Distance from target to allow jump usage", 0, 3, .1f);
         }
 
@@ -87,7 +90,7 @@ namespace Melee
                 // Does not cause any issues, and we don't want to spam the log.
                 // We should always properly throw any exceptions, except this time.
                 // For now, return false.
-                PluginLog.LogWarning("Invalid operation exception in CanUseAbilitySafely()");
+                PluginLog.LogDebug("Invalid operation exception in CanUseAbilitySafely()");
                 return false;
             }
         }
@@ -120,19 +123,30 @@ namespace Melee
          */
         private bool HandleJumps(out IAction action)
         {
+            if (Configs.GetBool("DRG_NoJumpsIfMoving") && IsMoving)
+            {
+                action = null;
+                return false;
+            }
             if (Target != null && Target.DistanceToPlayer() <= Configs.GetFloat("DRG_JumpDistance"))
             {
                 if (RecordActions != null && RecordActions.Length >= 1 && RecordActions[0].Action.ActionCategory.Value.Name != "Ability")
                 {
-                    bool dragonFireInBurst = Configs.GetBool("DRG_DragonFireInBurst");
+                    bool dragonfireInBurst = Configs.GetBool("DRG_DragonFireInBurst");
+                    bool spineshatterInBurst = Configs.GetBool("DRG_SpineshatterInBurst");
 
                     if (LazyJump(out action)) return true;
-                    if (!dragonFireInBurst
-                        || dragonFireInBurst && InBurst && Player.HasStatus(true, StatusID.LanceCharge))
+                    if (!dragonfireInBurst
+                        || dragonfireInBurst && InBurst && Player.HasStatus(true, StatusID.LanceCharge))
                     {
                         if (DragonFireDive.CanUse(out action, CanUseOption.MustUse)) return true;
                     }
-                    if (SpineShatterDive.CanUse(out action, CanUseOption.MustUseEmpty)) return true;
+
+                    if (!spineshatterInBurst
+                        || spineshatterInBurst && InBurst && Player.HasStatus(true, StatusID.LanceCharge))
+                    {
+                        if (SpineShatterDive.CanUse(out action, CanUseOption.MustUseEmpty)) return true;
+                    }
                 }
             }
 
@@ -169,6 +183,7 @@ namespace Melee
 
             if (FullThrust.CanUse(out act)) return true;
             if (ChaosThrust.CanUse(out act)) return true;
+
             if (TrueThrust.CanUse(out act)) return true;
 
             if (!IsCurrentlyInOpener)
@@ -183,6 +198,11 @@ namespace Melee
         //For some gcds very important, even more than healing, defense, interrupt, etc.
         protected override bool EmergencyGCD(out IAction act)
         {
+            //if (Configs.GetBool("DRG_OpenerTincture"))
+            //{
+            //    if (IsLastGCD(false, TrueThrust) && UseBurstMedicine(out act)) return true;
+            //}
+
             return base.EmergencyGCD(out act);
         }
         #endregion
@@ -195,10 +215,23 @@ namespace Melee
                 return AttackAbilityOpener(out act);
             }
 
-            // Use Star Diver when possible
+            if (Nastrond.CanUse(out act, CanUseOption.MustUse)) return true;
+
             if (CanUseAbilitySafely() && RecordActions[0].Action.ActionCategory.Value.Name != "Ability"
-                && Target.DistanceToPlayer() <= Configs.GetFloat("DRG_JumpDistance")
-                && StarDiver.CanUse(out act, CanUseOption.MustUse)) return true;
+                && Target.DistanceToPlayer() <= Configs.GetFloat("DRG_JumpDistance"))
+            {
+                if (Configs.GetBool("DRG_NoJumpsIfMoving") && !IsMoving
+                    || !Configs.GetBool("DRG_NoJumpsIfMoving"))
+                {
+                    if (StarDiver.CanUse(out act, CanUseOption.MustUse)) return true;
+                }
+            }
+
+            // Check for Geirskogul with Lance Charge
+            if (EyeCount == 2 && Player.HasStatus(true, StatusID.LanceCharge) && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
+
+            // Check for Geirskogul without Lance Charge
+            if (EyeCount < 2 && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
 
             if (WyrmwindThrust.CanUse(out act, CanUseOption.MustUse)) return true;
             if (HandleJumps(out act)) return true;
@@ -286,14 +319,7 @@ namespace Melee
 
             if (nextGCD is BaseAction action && InCombat && CanUseAbilitySafely())
             {
-                // Use Nastrond if possible
-                if (Nastrond.CanUse(out act, CanUseOption.MustUse)) return true;
 
-                // Check for Geirskogul with Lance Charge
-                if (EyeCount == 2 && Player.HasStatus(true, StatusID.LanceCharge) && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
-
-                // Check for Geirskogul without Lance Charge
-                if (EyeCount < 2 && Geirskogul.CanUse(out act, CanUseOption.MustUse)) return true;
 
                 // Use buffs in burst phase
                 if (InBurst)
@@ -307,33 +333,12 @@ namespace Melee
                     {
                         if (LanceCharge.CanUse(out act, CanUseOption.MustUse)) return true;
                     }
-
-                    //if (LanceCharge.CanUse(out act, CanUseOption.MustUse)) return true;
-
-                    if (Player.HasStatus(true, StatusID.LanceCharge))
-                    {
-                        if (BattleLitany.CanUse(out act, CanUseOption.MustUse)) return true;
-                        if (DragonSight.CanUse(out act, CanUseOption.MustUse)) return true;
-                    }
-
-                    if (Configs.GetBool("DRG_DragonFireInBurst") && Player.HasStatus(true, StatusID.LanceCharge))
-                    {
-                        if (HandleJumps(out act)) return true;
-                    }
                 }
 
                 if (Player.HasStatus(true, StatusID.LanceCharge))
                 {
                     if (BattleLitany.CanUse(out act, CanUseOption.MustUse)) return true;
                     if (DragonSight.CanUse(out act, CanUseOption.MustUse)) return true;
-                }
-
-                if (Configs.GetBool("DRG_DragonFireInBurst")
-                    && Player.HasStatus(true, StatusID.LanceCharge)
-                    && Player.HasStatus(true, StatusID.RightEye)
-                    && Player.HasStatus(true, StatusID.BattleLitany))
-                {
-                    if (HandleJumps(out act)) return true;
                 }
 
                 // Buff Heavens' Thrust
@@ -359,8 +364,6 @@ namespace Melee
             if (CanUseAbilitySafely()
                 && Target.DistanceToPlayer() <= Configs.GetFloat("DRG_JumpDistance")
                 && StarDiver.CanUse(out act, CanUseOption.MustUse)) return true;
-
-            if (IsLastGCD(false, TrueThrust) && UseBurstMedicine(out act)) return true;
 
             if (nextGCD.IsTheSameTo(true, ChaosThrust) || nextGCD.IsTheSameTo(false, ChaosThrust))
             {
@@ -448,6 +451,10 @@ namespace Melee
             }
 
             ImGui.Text("Opener availability: " + openerStatus);
+            ImGui.Text("Is currently in opener: " + IsCurrentlyInOpener);
+
+            ImGui.Separator();
+
             ImGui.Text("Last combo action: " + DataCenter.LastComboAction);
             ImGui.Text("Next GCD combo path: " + (GoThroughFirstPath ? "Disembowel." : "Vorpal Thrust."));
 
@@ -459,19 +466,26 @@ namespace Melee
             ImGui.Separator();
 
             ImGui.Text("Is True Thrust last used GCD: " + IsLastGCD(false, TrueThrust));
-            ImGui.Separator();
-            //ImGui.Text("Is duty started: " + Service.DutyState.IsDutyStarted);
 
             ImGui.Separator();
 
             var willUseAoe = NumberOfHostilesIn(3);
-            ImGui.Text("Hostiles in range for aoe: " + willUseAoe);
+            ImGui.Text("Has 3 hostiles in range for aoe: " + willUseAoe);
         }
 
 
 
         private void HandleOpenerAvailability()
         {
+            //if (DataCenter.LastGCD != ActionID.None 
+            //    && DataCenter.LastAbility != ActionID.None 
+            //    && DataCenter.LastComboAction != (ActionID)5)
+            //{
+            //    IsOpenerAvailable = false;
+            //    IsCurrentlyInOpener = false;
+            //    return;
+            //}
+
             if (Configs.GetBool("DRG_BurstOpener") && InBurst || !Configs.GetBool("DRG_BurstOpener"))
             {
                 bool hasDragonSight = DragonSight.CanUse(out _, CanUseOption.IgnoreClippingCheck);
